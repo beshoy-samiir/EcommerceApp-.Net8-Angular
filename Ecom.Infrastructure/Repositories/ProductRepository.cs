@@ -3,6 +3,7 @@ using Ecom.Core.DTO;
 using Ecom.Core.Entities.Product;
 using Ecom.Core.Interfaces;
 using Ecom.Core.Services;
+using Ecom.Core.Sharing;
 using Ecom.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -23,6 +24,38 @@ namespace Ecom.Infrastructure.Repositories
             this.context = context;
             this.mapper = mapper;
             this.imageManagementService = imageManagementService;
+        }
+
+        public async Task<IEnumerable<ProductDTO>> GetAllAsync(ProductParams productParams)
+        {
+            var query = context.Products.Include(m => m.Category).Include(m => m.Photos).AsNoTracking();
+
+            if (!string.IsNullOrEmpty(productParams.Search))
+            {
+                var searchWords = productParams.Search.Split(' ');
+                query = query.Where(m => searchWords.All(word => m.Name.ToLower().Contains(word.ToLower()) || m.Description.ToLower().Contains(word.ToLower())));
+                //query = query.Where(m => m.Name.ToLower().Contains(productParams.Search.ToLower()) || m.Description.ToLower().Contains(productParams.Search.ToLower()));
+            }
+
+            if (productParams.CategoryId.HasValue)
+                query = query.Where(m => m.CategoryId == productParams.CategoryId);
+
+            if (!string.IsNullOrEmpty(productParams.sort))
+            {
+                query = productParams.sort switch
+                {
+                    "PriceAsc" => query.OrderBy(m => m.NewPrice),
+                    "PriceDesc" => query.OrderByDescending(m => m.NewPrice),
+                    _ => query.OrderBy(m => m.Name),
+                };
+            }
+            
+            //pageNumber = pageNumber > 0 ? pageNumber : 1;
+            //pageSize = pageSize > 0 ? pageSize : 3;
+            query = query.Skip((productParams.pageSize) *(productParams.PageNumber - 1)).Take(productParams.pageSize);
+
+            var result = mapper.Map<List<ProductDTO>>(query);
+            return result;
         }
 
         public async Task<bool> AddAsync(AddProductDTO productDTO)
